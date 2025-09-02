@@ -79,6 +79,23 @@
 
   const EXTENSION_ID = 'bird-tracker-plugin';
 
+  const LOCAL_CUSTOM_BIRD_TRACKER_VERSION = new Date().getTime();
+  // @ts-ignore
+  window.CUSTOM_BIRD_TRACKER_VERSION = LOCAL_CUSTOM_BIRD_TRACKER_VERSION;
+  /**
+   * @param {()=>void} callback
+   * @param {number} ms
+   */
+  const interval = (callback, ms) => {
+    // @ts-ignore
+    if (window.CUSTOM_BIRD_TRACKER_VERSION != LOCAL_CUSTOM_BIRD_TRACKER_VERSION) return;
+
+    callback();
+    setTimeout(() => {
+      interval(callback, ms);
+    }, ms);
+  };
+
   const storedIdentifications = {
     /**
      * @returns {Record<string, {type: string, identifiedAt?: string}>}
@@ -89,12 +106,12 @@
       try {
         const parsed = JSON.parse(storageValue);
         if (typeof parsed != 'object') {
-          alert(`error, invalid local storage [${storageValue}]`);
+          alert(`Error: invalid local storage [${storageValue}]`);
           return {};
         }
         return parsed;
       } catch (error) {
-        alert(`error, invalid local storage [${storageValue}]`);
+        alert(`Error: invalid local storage [${storageValue}]`);
         return {};
       }
     },
@@ -115,14 +132,18 @@
         if (existing[id] && existing[id].type != type) {
           missmatches.push({ id, expected: existing[id].type, got: type });
         }
+        if (isNaN(Number(id)) || isNaN(Number(type))) continue;
         existing[id] = { type, identifiedAt };
       }
 
       if (missmatches.length > 0) {
         const text = missmatches
-          .map(missmatch => `[${missmatch.id}] expected (${missmatch.expected}) got (${missmatch.got})`)
+          .map(
+            missmatch =>
+              `[track_id=${missmatch.id}]\nexpected [identification_id=${missmatch.expected}]\ngot [identification_id=${missmatch.got}]`,
+          )
           .join('\n');
-        alert(`error, missmatch in import data:\n${text}`);
+        alert(`Aborting import, found conflicting identification values:\n\n${text}`);
         return;
       }
 
@@ -168,7 +189,8 @@
         index: firstRow.findIndex(rowStr => rowStr == column),
       }));
       if (mappings.some(mapping => mapping.index == -1)) {
-        alert(`error, csv missing required columns (${columns.join(',')})`);
+        alert(`Error: CSV missing required columns (${columns.join(',')})`);
+        return [];
       }
 
       return rawRows.slice(1).map(rawRow => {
@@ -236,38 +258,76 @@
 
   const identification = document.createElement('select');
   identification.id = `${container.id}-identification`;
-  Object.entries(LABEL_FOR_TYPE).forEach(([name, type]) => {
+  Object.entries(LABEL_FOR_TYPE).forEach(([type, name]) => {
     const option = document.createElement('option');
     option.textContent = name;
     option.value = type;
     identification.appendChild(option);
   });
+  identification.addEventListener('change', () => {
+    const id = Number(identifier.value);
+    if (isNaN(id)) return;
+    updateIdentification.disabled = storedIdentifications.get()[id]?.type == String(identification.selectedIndex);
+  });
   container.appendChild(identification);
 
   const updateIdentification = document.createElement('button');
-  updateIdentification.textContent = 'Update Identification';
+  updateIdentification.disabled = true;
+  updateIdentification.textContent = 'Save Identification';
   updateIdentification.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
 
     if (isNaN(Number(identifier.value))) {
-      alert(`error, unexpected non number id (${identifier.value})`);
+      alert(`Error: unexpected non number id (${identifier.value})`);
       return;
     }
 
     storedIdentifications.add(identifier.value, String(identification.selectedIndex));
+    updateIdentification.disabled = true;
   });
   container.appendChild(updateIdentification);
 
-  const hr = document.createElement('hr');
-  hr.style = `
-    width: 100%;
+  {
+    const hr = document.createElement('hr');
+    hr.style = `width: 100%;`;
+    container.appendChild(hr);
+  }
+
+  {
+    const label = document.createElement('span');
+    label.textContent = 'Local Identifications:';
+    container.appendChild(label);
+  }
+
+  const identificationsView = document.createElement('pre');
+  identificationsView.style = `
+    margin: 0;
+    height: 3.5rem;
+    background: #fff;
+    overflow: scroll;
+    padding: 4px;
+    border: black 1px;
   `;
-  container.appendChild(hr);
+  container.appendChild(identificationsView);
+
+  const clearIdentifications = document.createElement('button');
+  clearIdentifications.textContent = 'Clear Identifications';
+  clearIdentifications.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (confirm('Are you sure? (a backup CSV will be downloaded)')) {
+      downloadIdentifications.click();
+      storedIdentifications.set({});
+    }
+  });
+  container.appendChild(clearIdentifications);
 
   const uploadIdentifications = document.createElement('input');
   uploadIdentifications.id = `${container.id}-uploadIdentifications`;
   uploadIdentifications.type = 'file';
+  uploadIdentifications.hidden = true;
   uploadIdentifications.accept = '.csv';
   uploadIdentifications.addEventListener('change', e => {
     // @ts-ignore
@@ -276,52 +336,62 @@
 
     const reader = new FileReader();
     reader.onload = function (event) {
-      const parsedCsv = csv.parse(',', ['id', 'type', 'identifiedAt'], String(event.target?.result ?? ''));
-      const identifications = Object.fromEntries(
-        parsedCsv.map(row => [row.id, { type: row.type, identifiedAt: row.identifiedAt }]),
+      storedIdentifications.import(
+        Object.fromEntries(
+          csv
+            .parse(',', ['track_id', 'identification_id', 'identification_at'], String(event.target?.result ?? ''))
+            .filter(row => !isNaN(Number(row.track_id || 'nan')) && !isNaN(Number(row.identification_id || 'nan')))
+            .map(row => [row.track_id, { type: row.identification_id, identifiedAt: row.identification_at }]),
+        ),
       );
-      storedIdentifications.import(identifications);
     };
     reader.readAsText(file);
   });
   container.appendChild(uploadIdentifications);
 
+  interval(() => {
+    identificationsView.innerText = Object.entries(storedIdentifications.get())
+      .sort(([, { identifiedAt: at }], [, { identifiedAt: bt }]) => {
+        const ad = new Date(at ?? '').getTime();
+        const bd = new Date(bt ?? '').getTime();
+        if (isNaN(ad) || isNaN(bd)) {
+          return Number(isNaN(ad)) - Number(isNaN(bd));
+        }
+        return bd - ad;
+      })
+      .map(([id, { type }]) => `[${id}] ${LABEL_FOR_TYPE[type]}`)
+      .join('\n');
+  }, 200);
+
+  const uploadIdentificationsButton = document.createElement('button');
+  uploadIdentificationsButton.textContent = 'Import Identifications CSV';
+  uploadIdentificationsButton.onclick = () => {
+    if (confirm('Warning, this will merge your current data with the imported data.')) {
+      uploadIdentifications.click();
+    }
+  };
+  container.appendChild(uploadIdentificationsButton);
+
   const downloadIdentifications = document.createElement('button');
-  downloadIdentifications.textContent = 'Download Identifications';
+  downloadIdentifications.textContent = 'Download Identifications CSV';
   downloadIdentifications.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
+
+    csv.download(
+      csv.serialize(
+        ',',
+        ['track_id', 'identification_id', 'identification_name', 'identification_at'],
+        Object.entries(storedIdentifications.get()).map(([key, value]) => ({
+          track_id: key,
+          identification_id: value.type,
+          identification_name: LABEL_FOR_TYPE[value.type],
+          identification_at: value.identifiedAt,
+        })),
+      ),
+    );
   });
   container.appendChild(downloadIdentifications);
-
-  const clearIdentifications = document.createElement('button');
-  clearIdentifications.textContent = 'Clear Identifications';
-  clearIdentifications.addEventListener('click', e => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (confirm('Are you sure you want to delete all identification data from this device?')) {
-      storedIdentifications.set({});
-    }
-  });
-  container.appendChild(clearIdentifications);
-
-  const LOCAL_CUSTOM_BIRD_TRACKER_VERSION = new Date().getTime();
-  // @ts-ignore
-  window.CUSTOM_BIRD_TRACKER_VERSION = LOCAL_CUSTOM_BIRD_TRACKER_VERSION;
-  /**
-   * @param {()=>void} callback
-   * @param {number} ms
-   */
-  const interval = (callback, ms) => {
-    // @ts-ignore
-    if (window.CUSTOM_BIRD_TRACKER_VERSION != LOCAL_CUSTOM_BIRD_TRACKER_VERSION) return;
-
-    callback();
-    setTimeout(() => {
-      interval(callback, ms);
-    }, ms);
-  };
 
   let idListItem = null;
 
@@ -330,38 +400,37 @@
   }, 200);
 
   interval(() => {
-    const disableIdentification = () => {
-      identification.disabled = true;
-      updateIdentification.disabled = true;
-    };
+    const id = idListItem ? Number(idListItem.textContent.replace('ID: ', '').trim()) : 0;
 
-    if (!idListItem) {
-      identifier.value = '';
-      disableIdentification();
-      return;
+    if (isNaN(id)) {
+      alert(`Error: invalid id [${JSON.stringify(id)}]`);
     }
 
-    const id = Number(idListItem.textContent.replace('ID: ', '').trim());
-    if (isNaN(id)) {
-      alert(`error, invalid id [${JSON.stringify(id)}]`);
-      disableIdentification();
+    if (id === 0 || isNaN(id)) {
+      identifier.value = '';
+      identification.selectedIndex = 0;
+      identification.disabled = true;
+      updateIdentification.disabled = true;
       return;
     }
 
     if (identifier.value == String(id)) return;
 
     identifier.value = String(id);
+    identification.disabled = false;
+
     const storedIdentification = storedIdentifications.get()[id];
-    if (storedIdentification) {
-      const typeNumber = Number(storedIdentification.type);
-      if (isNaN(typeNumber)) {
-        alert(`error, stored identification number is NaN (${storedIdentification.type})`);
-        return;
-      }
-      identification.selectedIndex = typeNumber;
-    } else {
+    if (!storedIdentification) {
       identification.selectedIndex = 0;
+      updateIdentification.disabled = true;
+      return;
     }
-    updateIdentification.disabled = false;
+
+    const typeNumber = Number(storedIdentification.type);
+    if (isNaN(typeNumber)) {
+      alert(`Error: stored identification number is NaN (${storedIdentification.type})`);
+      return;
+    }
+    identification.selectedIndex = typeNumber;
   }, 50);
 }
