@@ -240,21 +240,33 @@
 
   {
     const label = document.createElement('span');
-    label.textContent = 'Identifier:';
+    label.textContent = 'Current Identification:';
     container.appendChild(label);
+  }
+
+  const group = document.createElement('span');
+  container.appendChild(group);
+
+  {
+    const label = document.createElement('span');
+    label.style = 'font-size: 13px; color: #222; margin-right: 4px;';
+    label.textContent = 'Track ID:';
+    group.appendChild(label);
   }
 
   const identifier = document.createElement('input');
   identifier.id = `${container.id}-identifier`;
+  identifier.style = 'width: 100px;';
   identifier.value = '';
   identifier.disabled = true;
-  container.appendChild(identifier);
+  group.appendChild(identifier);
 
-  {
-    const label = document.createElement('span');
-    label.textContent = 'Identification:';
-    container.appendChild(label);
-  }
+  // {
+  //   const label = document.createElement('span');
+  //   label.style = 'font-size: 13px; color: #222;';
+  //   label.textContent = 'Identification:';
+  //   container.appendChild(label);
+  // }
 
   const identification = document.createElement('select');
   identification.id = `${container.id}-identification`;
@@ -273,7 +285,7 @@
 
   const updateIdentification = document.createElement('button');
   updateIdentification.disabled = true;
-  updateIdentification.textContent = 'Save Identification';
+  updateIdentification.textContent = 'Update Identification';
   updateIdentification.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
@@ -296,7 +308,7 @@
 
   {
     const label = document.createElement('span');
-    label.textContent = 'Local Identifications:';
+    label.textContent = 'All Identifications:';
     container.appendChild(label);
   }
 
@@ -305,6 +317,8 @@
     margin: 0;
     height: 3.5rem;
     background: #fff;
+    color: #222;
+    font-size: 11px;
     overflow: scroll;
     padding: 4px;
     border: black 1px;
@@ -432,5 +446,5 @@
       return;
     }
     identification.selectedIndex = typeNumber;
-  }, 50);
+  }, 100);
 }
