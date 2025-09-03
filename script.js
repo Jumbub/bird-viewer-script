@@ -75,6 +75,23 @@
     [71]: 'Australian ringneck',
     [72]: 'Budgerigar',
     [73]: 'Little buttonquail',
+    // Custom
+    [1000]: 'Nyctophilus geoffroyi',
+    [1001]: 'Rhinonicteris aurantia',
+    [1002]: 'Nyctophilus Daedalus',
+    [1003]: 'Chalinolobus gouldii',
+    [1004]: 'Ozimops lumsdenae',
+    [1005]: 'Charephon jobensis',
+    [1006]: 'Austronomus australis',
+    [1007]: 'Macroderma gigas',
+    [1008]: 'Pteropus scapulatus',
+    [1009]: 'Pteropus alecto',
+    [1010]: 'Saccolaimus flaviventris',
+    [1011]: 'Scotorepens balstoni',
+    [1012]: 'Scotorepens greyii',
+    [1013]: 'Taphozous georgianus',
+    [1014]: 'Taphozous hilli',
+    [1015]: 'Vespadelus finlaysoni',
   };
 
   const EXTENSION_ID = 'bird-tracker-plugin';
@@ -279,7 +296,11 @@
   identification.addEventListener('change', () => {
     const id = Number(identifier.value);
     if (isNaN(id)) return;
-    updateIdentification.disabled = storedIdentifications.get()[id]?.type == String(identification.selectedIndex);
+    if (isNaN(Number(identification.value))) {
+      alert('Error, expected identification value to be a number');
+      return;
+    }
+    updateIdentification.disabled = storedIdentifications.get()[id]?.type == identification.value;
   });
   container.appendChild(identification);
 
@@ -295,7 +316,7 @@
       return;
     }
 
-    storedIdentifications.add(identifier.value, String(identification.selectedIndex));
+    storedIdentifications.add(identifier.value, String(identification.value));
     updateIdentification.disabled = true;
   });
   container.appendChild(updateIdentification);
@@ -422,7 +443,7 @@
 
     if (id === 0 || isNaN(id)) {
       identifier.value = '';
-      identification.selectedIndex = 0;
+      identification.value = String(0);
       identification.disabled = true;
       updateIdentification.disabled = true;
       return;
@@ -435,7 +456,7 @@
 
     const storedIdentification = storedIdentifications.get()[id];
     if (!storedIdentification) {
-      identification.selectedIndex = 0;
+      identification.value = String(0);
       updateIdentification.disabled = true;
       return;
     }
@@ -445,6 +466,6 @@
       alert(`Error: stored identification number is NaN (${storedIdentification.type})`);
       return;
     }
-    identification.selectedIndex = typeNumber;
+    identification.value = String(typeNumber);
   }, 100);
 }
