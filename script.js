@@ -236,8 +236,8 @@
   container.id = 'custom-bird-tracker';
   container.style = `
     position: fixed;
-    right: 20px;
-    bottom: 80px;
+    right: 300px;
+    top: 20px;
     width: 240px;
 
     display: flex;
